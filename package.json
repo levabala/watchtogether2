@@ -2,8 +2,11 @@
   "name": "watchtogether2",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/main.js",
   "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --outfile=dist/main.js --external:electron && esbuild src/renderer.ts --bundle --platform=browser --outfile=dist/renderer.js",
+    "start": "npm run build && npx electron .",
+    "dev": "npm run build && NODE_ENV=development npx electron .",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -11,5 +14,10 @@
   "license": "ISC",
   "dependencies": {
     "electron": "^37.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.10",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.8.3"
   }
 }

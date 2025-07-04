@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watch Together</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #1a1a1a;
+            color: white;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .mode-switcher {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .mode-btn {
+            padding: 10px 20px;
+            border: 2px solid #333;
+            background-color: #2a2a2a;
+            color: white;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: all 0.3s;
+        }
+
+        .mode-btn:hover {
+            background-color: #3a3a3a;
+        }
+
+        .mode-btn.active {
+            background-color: #007acc;
+            border-color: #007acc;
+        }
+
+        .video-container {
+            width: 100%;
+            max-width: 800px;
+            margin: 20px auto;
+            background-color: #000;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        #video {
+            width: 100%;
+            height: 450px;
+            background-color: #000;
+        }
+
+        .controls-section {
+            margin: 20px 0;
+            padding: 20px;
+            background-color: #2a2a2a;
+            border-radius: 10px;
+        }
+
+        .controls-section h3 {
+            margin-top: 0;
+            color: #007acc;
+        }
+
+        .host-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .file-input-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .video-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 10px 15px;
+            border: none;
+            background-color: #007acc;
+            color: white;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+
+        .btn:hover {
+            background-color: #005a99;
+        }
+
+        .btn:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+
+        .client-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .connection-form {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .connection-form input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #555;
+            background-color: #1a1a1a;
+            color: white;
+            border-radius: 5px;
+        }
+
+        .connection-status {
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .connection-status.connected {
+            background-color: #2d5a2d;
+            color: #90ee90;
+        }
+
+        .connection-status.disconnected {
+            background-color: #5a2d2d;
+            color: #ffcccb;
+        }
+
+        .offer-answer-display {
+            margin-top: 15px;
+        }
+
+        .offer-answer-display textarea {
+            width: 100%;
+            height: 100px;
+            background-color: #1a1a1a;
+            color: white;
+            border: 1px solid #555;
+            border-radius: 5px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            resize: vertical;
+        }
+
+        .offer-answer-display label {
+            display: block;
+            margin-bottom: 5px;
+            color: #ccc;
+        }
+
+        #file-input {
+            padding: 8px;
+            border: 1px solid #555;
+            background-color: #1a1a1a;
+            color: white;
+            border-radius: 5px;
+        }
+
+        #file-input::-webkit-file-upload-button {
+            background-color: #007acc;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        #file-input::-webkit-file-upload-button:hover {
+            background-color: #005a99;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Watch Together</h1>
+        
+        <div class="mode-switcher">
+            <button id="host-btn" class="mode-btn active">Host</button>
+            <button id="client-btn" class="mode-btn">Client</button>
+        </div>
+
+        <div class="video-container">
+            <video id="video" controls>
+                Your browser does not support the video tag.
+            </video>
+        </div>
+
+        <div id="host-controls" class="controls-section host-controls">
+            <h3>Host Controls</h3>
+            
+            <div class="file-input-container">
+                <label for="file-input">Select Video File:</label>
+                <input type="file" id="file-input" accept="video/*">
+            </div>
+
+            <div class="video-controls">
+                <button id="play-btn" class="btn">Play</button>
+                <button id="pause-btn" class="btn">Pause</button>
+                <button id="reset-btn" class="btn">Reset</button>
+            </div>
+
+            <div class="offer-answer-display">
+                <label for="offer-display">Share this offer with the client:</label>
+                <textarea id="offer-display" readonly placeholder="Offer will appear here..."></textarea>
+            </div>
+        </div>
+
+        <div id="client-controls" class="controls-section client-controls" style="display: none;">
+            <h3>Client Controls</h3>
+            
+            <div class="connection-form">
+                <input type="text" id="address-input" placeholder="Paste host's offer here...">
+                <button id="connect-btn" class="btn">Connect</button>
+            </div>
+
+            <div id="connection-status" class="connection-status disconnected">
+                Disconnected
+            </div>
+
+            <div class="offer-answer-display">
+                <label for="answer-display">Send this answer back to the host:</label>
+                <textarea id="answer-display" readonly placeholder="Answer will appear here..."></textarea>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="dist/renderer.js"></script>
+</body>
+</html>
