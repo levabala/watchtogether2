@@ -28,12 +28,14 @@ export default function ClientControls({ connectionStatus, onConnectToHost }: Cl
         <div className="flex gap-3">
           <input
             type="text"
+            data-testid="offer-input"
             value={offerInput}
             onChange={(e) => setOfferInput((e.target as HTMLInputElement).value)}
             placeholder="Paste host's offer here..."
             className="flex-1 p-3 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-400"
           />
           <button
+            data-testid="connect-button"
             onClick={handleConnect}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
@@ -42,6 +44,7 @@ export default function ClientControls({ connectionStatus, onConnectToHost }: Cl
         </div>
 
         <div
+          data-testid="connection-status"
           className={`p-3 rounded-lg text-center font-medium ${
             connectionStatus.connected
               ? 'bg-green-900 text-green-300'
@@ -58,6 +61,7 @@ export default function ClientControls({ connectionStatus, onConnectToHost }: Cl
             </label>
             <textarea
               id="answer-display"
+              data-testid="answer-display"
               value={answer}
               readOnly
               placeholder="Answer will appear here..."

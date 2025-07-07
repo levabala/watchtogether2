@@ -6,21 +6,9 @@ This is an Electron application for **collaborative movies and series watching**
 ## Tech Stack
 - **Frontend**: Preact with TypeScript and JSX
 - **Styling**: Tailwind CSS v4
-- **Build Tool**: esbuild
+- **Build Tool**: electron-vite (Vite-based)
 - **Package Manager**: pnpm
 - **Desktop Framework**: Electron
-
-## Build/Test Commands
-- **Install dependencies**: `pnpm install`
-- **Build project**: `pnpm run build` (builds both CSS and JS)
-- **Start Electron app**: `npx electron .` or `pnpm exec electron .`
-
-## Code Style Guidelines
-- **TypeScript** with strict mode enabled
-- **Preact components** using hooks (useState, useEffect, useCallback)
-- **JSX** enabled in tsconfig.json with `react-jsx` and `jsxImportSource: "preact"`
-- **Tailwind CSS** utility classes for styling
-- **Component-based architecture** with modular file structure
 
 ## Core Features
 - **P2P Video Streaming**: Stream local video files directly between peers without central server but maybe via a proxy

@@ -1,31 +1,46 @@
 {
   "name": "watchtogether2",
   "version": "1.0.0",
-  "description": "",
-  "main": "dist/main.js",
+  "description": "Collaborative movies and series watching using P2P streaming of local video files",
+  "main": "./out/main/index.js",
   "scripts": {
-    "build:css": "cp node_modules/tailwindcss/index.css dist/styles.css",
-    "build:js": "esbuild src/main.ts --bundle --platform=node --outfile=dist/main.js --external:electron && esbuild src/renderer.tsx --bundle --platform=browser --outfile=dist/renderer.js --jsx=automatic --jsx-factory=h --jsx-fragment=Fragment --alias:react=preact/compat --alias:react-dom=preact/compat",
-    "build": "npm run build:css && npm run build:js",
-    "start": "npm run build && npx electron .",
-    "dev": "npm run build && NODE_ENV=development npx electron .",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "electron-vite preview",
+    "dev": "electron-vite dev",
+    "dev:host": "electron-vite dev -- --host",
+    "dev:client": "electron-vite dev -- --client",
+    "dev:both": "concurrently --kill-others --names \"HOST,CLIENT\" --prefix-colors \"cyan,magenta\" \"pnpm run dev:host\" \"pnpm run dev:client\"",
+    "build": "electron-vite build",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck": "pnpm run typecheck:node && tsc --noEmit",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug"
   },
-  "keywords": [],
+  "keywords": [
+    "electron",
+    "p2p",
+    "video",
+    "streaming",
+    "collaborative"
+  ],
   "author": "",
   "license": "ISC",
-  "dependencies": {
-    "@preact/compat": "^18.3.1",
-    "electron": "^37.2.0",
-    "preact": "^10.26.9"
-  },
   "devDependencies": {
-    "@tailwindcss/cli": "^4.0.0",
-    "@types/node": "^24.0.10",
-    "autoprefixer": "^10.4.21",
-    "esbuild": "^0.24.0",
-    "postcss": "^8.5.6",
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/tsconfig": "^1.0.1",
+    "@electron-toolkit/utils": "^4.0.0",
+    "@playwright/test": "^1.53.2",
+    "@preact/preset-vite": "^2.10.2",
+    "@tailwindcss/vite": "^4.1.11",
+    "concurrently": "^9.2.0",
+    "electron": "^37.2.0",
+    "electron-vite": "^4.0.0",
+    "playwright": "^1.53.2",
     "tailwindcss": "^4.1.11",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vite": "^7.0.2"
+  },
+  "dependencies": {
+    "preact": "^10.26.9"
   }
 }
