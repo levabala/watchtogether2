@@ -135,7 +135,11 @@ test.describe('P2P Connection Tests', () => {
     console.log('🚀 Starting UI state test...');
     
     const hostApp = await electron.launch({ 
-      args: [path.join(__dirname, '..', 'out/main/index.js'), '--host']
+      args: [path.join(__dirname, '..', 'out/main/index.js'), '--host'],
+      env: {
+        ...process.env,
+        NODE_ENV: 'test'
+      }
     });
     
     const hostWindow = await hostApp.firstWindow();
@@ -164,7 +168,11 @@ test.describe('P2P Connection Tests', () => {
     console.log('🚀 Starting error handling test...');
     
     const clientApp = await electron.launch({ 
-      args: [path.join(__dirname, '..', 'out/main/index.js'), '--client']
+      args: [path.join(__dirname, '..', 'out/main/index.js'), '--client'],
+      env: {
+        ...process.env,
+        NODE_ENV: 'test'
+      }
     });
     
     const clientWindow = await clientApp.firstWindow();

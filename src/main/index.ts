@@ -26,11 +26,13 @@ function getAppModeTitle(mode: string): string {
 
 function createWindow(): void {
   const appMode = parseAppMode();
+  const isTestMode = process.env.NODE_ENV === 'test';
   
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     title: getAppModeTitle(appMode),
+    show: !isTestMode,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
