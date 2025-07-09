@@ -4,19 +4,15 @@ import { ConnectionStatus } from '../types';
 
 interface ClientControlsProps {
   connectionStatus: ConnectionStatus;
-  onConnectToHost: (offer: string) => Promise<string | null>;
+  onConnectToHost: (hostPeerId: string) => Promise<string | null>;
 }
 
 export default function ClientControls({ connectionStatus, onConnectToHost }: ClientControlsProps) {
-  const [offerInput, setOfferInput] = useState<string>('');
-  const [answer, setAnswer] = useState<string>('');
+  const [peerIdInput, setPeerIdInput] = useState<string>('');
 
   const handleConnect = async () => {
-    if (offerInput.trim()) {
-      const answerData = await onConnectToHost(offerInput.trim());
-      if (answerData) {
-        setAnswer(answerData);
-      }
+    if (peerIdInput.trim()) {
+      await onConnectToHost(peerIdInput.trim());
     }
   };
 
@@ -28,16 +24,17 @@ export default function ClientControls({ connectionStatus, onConnectToHost }: Cl
         <div className="flex gap-3">
           <input
             type="text"
-            data-testid="offer-input"
-            value={offerInput}
-            onChange={(e) => setOfferInput((e.target as HTMLInputElement).value)}
-            placeholder="Paste host's offer here..."
+            data-testid="peer-id-input"
+            value={peerIdInput}
+            onChange={(e) => setPeerIdInput((e.target as HTMLInputElement).value)}
+            placeholder="Enter host's Peer ID here..."
             className="flex-1 p-3 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-400"
           />
           <button
             data-testid="connect-button"
             onClick={handleConnect}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            disabled={!peerIdInput.trim()}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
           >
             Connect
           </button>
@@ -53,22 +50,6 @@ export default function ClientControls({ connectionStatus, onConnectToHost }: Cl
         >
           {connectionStatus.message}
         </div>
-
-        {answer && (
-          <div>
-            <label htmlFor="answer-display" className="block text-gray-300 mb-2">
-              Send this answer back to the host:
-            </label>
-            <textarea
-              id="answer-display"
-              data-testid="answer-display"
-              value={answer}
-              readOnly
-              placeholder="Answer will appear here..."
-              className="w-full h-24 p-3 bg-gray-900 border border-gray-600 rounded-lg text-white font-mono text-sm resize-y"
-            />
-          </div>
-        )}
       </div>
     </div>
   );

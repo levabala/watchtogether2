@@ -48,40 +48,20 @@ test.describe('P2P Connection Tests', () => {
     // On host: click "Start Hosting" button
     await hostWindow.locator('[data-testid="start-hosting-button"]').click();
     
-    // Wait for offer to be generated and have content
+    // Wait for peer ID to be generated and have content
     await hostWindow.waitForFunction(() => {
-      const offerElement = document.querySelector('[data-testid="offer-display"]') as HTMLTextAreaElement;
-      return offerElement && offerElement.value && offerElement.value.trim().length > 0;
+      const peerIdElement = document.querySelector('[data-testid=\"peer-id-display\"]') as HTMLInputElement;
+      return peerIdElement && peerIdElement.value && peerIdElement.value.trim().length > 0;
     }, { timeout: 15000 });
     
-    // Get the offer from host
-    const offerText = await hostWindow.locator('[data-testid="offer-display"]').inputValue();
-    expect(offerText).toBeTruthy();
-    console.log('Offer length:', offerText.length);
+    // Get the peer ID from host
+    const hostPeerId = await hostWindow.locator('[data-testid=\"peer-id-display\"]').inputValue();
+    expect(hostPeerId).toBeTruthy();
+    console.log('Host Peer ID:', hostPeerId);
     
-    // On client: paste the offer and connect
-    await clientWindow.locator('[data-testid="offer-input"]').fill(offerText!);
-    await clientWindow.locator('[data-testid="connect-button"]').click();
-    
-    // Wait for answer to be generated on client
-    await clientWindow.waitForFunction(() => {
-      const answerElement = document.querySelector('[data-testid="answer-display"]') as HTMLTextAreaElement;
-      return answerElement && answerElement.value && answerElement.value.trim().length > 0;
-    }, { timeout: 15000 });
-    
-    // Get the answer from client
-    const answerText = await clientWindow.locator('[data-testid="answer-display"]').inputValue();
-    expect(answerText).toBeTruthy();
-    console.log('Answer length:', answerText.length);
-    
-    // On host: paste the answer (auto-accept should trigger)
-    await hostWindow.locator('[data-testid="answer-input"]').fill(answerText!);
-    
-    // Wait for auto-accept to complete (input should be cleared)
-    await hostWindow.waitForFunction(() => {
-      const answerInput = document.querySelector('[data-testid="answer-input"]') as HTMLTextAreaElement;
-      return answerInput && answerInput.value.trim() === '';
-    }, { timeout: 10000 });
+    // On client: enter the host peer ID and connect
+    await clientWindow.locator('[data-testid=\"peer-id-input\"]').fill(hostPeerId!);
+    await clientWindow.locator('[data-testid=\"connect-button\"]').click();
     
     // Wait for connection to be established (look for connection status)
     console.log('Waiting for connection to establish...');
@@ -94,16 +74,21 @@ test.describe('P2P Connection Tests', () => {
     
     // Wait for either side to show connected
     try {
+      console.log('Waiting for connection to establish...');
       await Promise.race([
-        hostWindow.waitForSelector('[data-testid="connection-status"]:has-text("connected")', { timeout: 30000 }),
-        clientWindow.waitForSelector('[data-testid="connection-status"]:has-text("connected")', { timeout: 30000 })
+        hostWindow.waitForSelector('[data-testid="connection-status"]:has-text("Connected")', { timeout: 30000 }),
+        clientWindow.waitForSelector('[data-testid="connection-status"]:has-text("Connected")', { timeout: 30000 })
       ]);
+      console.log('Connection established successfully!');
     } catch (error) {
-      // If timeout, check final status
+      // If timeout, check final status and get console logs
       const finalHostStatus = await hostWindow.locator('[data-testid="connection-status"]').textContent();
       const finalClientStatus = await clientWindow.locator('[data-testid="connection-status"]').textContent();
-      console.log('Final host status:', finalHostStatus);
-      console.log('Final client status:', finalClientStatus);
+      console.log('Connection timeout - Final host status:', finalHostStatus);
+      console.log('Connection timeout - Final client status:', finalClientStatus);
+      
+      // Get console logs for debugging
+      console.log('Getting console logs for debugging...');
       throw error;
     }
     
@@ -114,8 +99,8 @@ test.describe('P2P Connection Tests', () => {
     console.log('Final host status:', hostStatus);
     console.log('Final client status:', clientStatus);
     
-    expect(hostStatus).toContain('connected');
-    expect(clientStatus).toContain('connected');
+    expect(hostStatus).toContain('Connected');
+    expect(clientStatus).toContain('Connected');
     
     // Wait a bit for pinging to start
     await hostWindow.waitForTimeout(6000); // Wait for at least one ping cycle
@@ -151,11 +136,11 @@ test.describe('P2P Connection Tests', () => {
     // Click start hosting
     await hostWindow.locator('[data-testid="start-hosting-button"]').click();
     
-    // Should show offer display
-    await expect(hostWindow.locator('[data-testid="offer-display"]')).toBeVisible();
+    // Should show peer ID display
+    await expect(hostWindow.locator('[data-testid="peer-id-display"]')).toBeVisible();
     
     // Should show answer input area
-    await expect(hostWindow.locator('[data-testid="answer-input"]')).toBeVisible();
+    await expect(hostWindow.locator('[data-testid="peer-id-display"]')).toBeVisible();
     
     await hostWindow.screenshot({ path: 'host-ui-states.png' });
     
@@ -178,8 +163,8 @@ test.describe('P2P Connection Tests', () => {
     const clientWindow = await clientApp.firstWindow();
     await clientWindow.waitForLoadState('domcontentloaded');
     
-    // Try to connect with invalid offer
-    await clientWindow.locator('[data-testid="offer-input"]').fill('invalid-offer-data');
+    // Try to connect with invalid peer ID
+    await clientWindow.locator('[data-testid="peer-id-input"]').fill('invalid-peer-id');
     await clientWindow.locator('button:has-text("Connect")').click();
     
     // Should show error or remain in disconnected state

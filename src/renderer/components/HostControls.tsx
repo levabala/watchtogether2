@@ -7,19 +7,17 @@ interface HostControlsProps {
   videoRef: RefObject<HTMLVideoElement>;
   onSetupPeer: () => Promise<string | null>;
   onVideoEvent: (eventType: string, currentTime?: number) => void;
-  onAcceptAnswer: (answer: string) => Promise<void>;
   connectionStatus: ConnectionStatus;
 }
 
-export default function HostControls({ videoRef, onSetupPeer, onVideoEvent, onAcceptAnswer, connectionStatus }: HostControlsProps) {
-  const [offer, setOffer] = useState<string>('');
-  const [answerInput, setAnswerInput] = useState<string>('');
+export default function HostControls({ videoRef, onSetupPeer, onVideoEvent, connectionStatus }: HostControlsProps) {
+  const [peerId, setPeerId] = useState<string>('');
   const [isHosting, setIsHosting] = useState<boolean>(false);
 
   const handleStartHosting = async () => {
-    const offerData = await onSetupPeer();
-    if (offerData) {
-      setOffer(offerData);
+    const hostPeerId = await onSetupPeer();
+    if (hostPeerId) {
+      setPeerId(hostPeerId);
       setIsHosting(true);
     }
   };
@@ -52,26 +50,9 @@ export default function HostControls({ videoRef, onSetupPeer, onVideoEvent, onAc
     }
   };
 
-  const handleAcceptAnswer = async () => {
-    if (answerInput.trim()) {
-      await onAcceptAnswer(answerInput.trim());
-      setAnswerInput('');
-    }
-  };
-
-  // Auto-accept answer when pasted
-  const handleAnswerChange = async (e: Event) => {
-    const value = (e.target as HTMLTextAreaElement).value;
-    setAnswerInput(value);
-    
-    console.log('Host: Answer input changed, length:', value.length);
-    console.log('Host: Answer content preview:', value.substring(0, 100));
-    
-    // Auto-accept if it looks like a valid JSON answer (WebRTC answers contain "sdp" field)
-    if (value.trim() && value.includes('"sdp"') && value.includes('"type"')) {
-      console.log('Host: Auto-accepting answer...');
-      await onAcceptAnswer(value.trim());
-      setAnswerInput('');
+  const copyPeerId = () => {
+    if (peerId) {
+      navigator.clipboard.writeText(peerId);
     }
   };
 
@@ -140,39 +121,23 @@ export default function HostControls({ videoRef, onSetupPeer, onVideoEvent, onAc
             </div>
 
             <div>
-              <label htmlFor="offer-display" className="block text-gray-300 mb-2">
-                Share this offer with the client:
-              </label>
-              <textarea
-                id="offer-display"
-                data-testid="offer-display"
-                value={offer}
-                readOnly
-                placeholder="Offer will appear here..."
-                className="w-full h-24 p-3 bg-gray-900 border border-gray-600 rounded-lg text-white font-mono text-sm resize-y"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="answer-input" className="block text-gray-300 mb-2">
-                Paste the client's answer here:
+              <label htmlFor="peer-id-display" className="block text-gray-300 mb-2">
+                Share this Peer ID with the client:
               </label>
               <div className="flex gap-3">
-                <textarea
-                  id="answer-input"
-                  data-testid="answer-input"
-                  value={answerInput}
-                  onChange={handleAnswerChange}
-                  placeholder="Paste client's answer here (will auto-accept)..."
-                  className="flex-1 h-24 p-3 bg-gray-900 border border-gray-600 rounded-lg text-white font-mono text-sm resize-y"
+                <input
+                  id="peer-id-display"
+                  data-testid="peer-id-display"
+                  value={peerId}
+                  readOnly
+                  placeholder="Peer ID will appear here..."
+                  className="flex-1 p-3 bg-gray-900 border border-gray-600 rounded-lg text-white font-mono text-sm"
                 />
                 <button
-                  data-testid="accept-answer-button"
-                  onClick={handleAcceptAnswer}
-                  disabled={!answerInput.trim()}
-                  className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+                  onClick={copyPeerId}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
-                  Accept Answer
+                  Copy ID
                 </button>
               </div>
             </div>

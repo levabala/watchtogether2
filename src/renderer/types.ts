@@ -26,8 +26,11 @@ export interface ConnectionStatus {
   message: string;
 }
 
+import type { Peer, DataConnection } from 'peerjs';
+
 export interface PeerConnection {
-  connection: RTCPeerConnection;
-  dataChannel: RTCDataChannel | null;
+  peer: Peer;
+  dataConnection: DataConnection | null;
   isHost: boolean;
+  peerId?: string;
 }

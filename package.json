@@ -41,6 +41,7 @@
     "vite": "^7.0.2"
   },
   "dependencies": {
+    "peerjs": "^1.5.5",
     "preact": "^10.26.9"
   }
 }

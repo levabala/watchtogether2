@@ -1,6 +1,7 @@
 import { h } from 'preact';
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
-import { AppMode, VideoState, SyncMessage, ConnectionStatus, PeerConnection } from '../types';
+import { Peer } from 'peerjs';
+import { AppMode, SyncMessage, ConnectionStatus, PeerConnection } from '../types';
 import ModeSwitcher from './ModeSwitcher';
 import VideoPlayer from './VideoPlayer';
 import HostControls from './HostControls';
@@ -13,6 +14,7 @@ export default function App() {
     message: 'Disconnected' 
   });
   const [peerConnection, setPeerConnection] = useState<PeerConnection | null>(null);
+  const [lastHostPeerId, setLastHostPeerId] = useState<string>('');
   const videoRef = useRef<HTMLVideoElement>(null);
 
   // Set initial mode from command line args
@@ -23,14 +25,32 @@ export default function App() {
     }
   }, []);
 
-  const disconnectPeer = () => {
+  const disconnectPeer = useCallback(() => {
+    console.log('🔌 Disconnecting peer...');
+    
     if (peerConnection) {
-      peerConnection.dataChannel?.close();
-      peerConnection.connection.close();
-      setPeerConnection(null);
+      try {
+        // Close data connection first
+        if (peerConnection.dataConnection) {
+          console.log('🔌 Closing data connection...');
+          peerConnection.dataConnection.close();
+        }
+        
+        // Destroy peer instance
+        if (peerConnection.peer && !peerConnection.peer.destroyed) {
+          console.log('🔌 Destroying peer...');
+          peerConnection.peer.destroy();
+        }
+        
+        setPeerConnection(null);
+        console.log('✅ Peer disconnected successfully');
+      } catch (error) {
+        console.error('❌ Error during disconnect:', error);
+      }
     }
+    
     setConnectionStatus({ connected: false, message: 'Disconnected' });
-  };
+  }, [peerConnection]);
 
   const handleModeChange = (newMode: AppMode) => {
     setMode(newMode);
@@ -38,8 +58,8 @@ export default function App() {
   };
 
   const sendSyncMessage = (message: SyncMessage) => {
-    if (peerConnection?.dataChannel?.readyState === 'open') {
-      peerConnection.dataChannel.send(JSON.stringify(message));
+    if (peerConnection?.dataConnection?.open) {
+      peerConnection.dataConnection.send(message);
     }
   };
 
@@ -78,375 +98,405 @@ export default function App() {
   };
 
   const setupHostPeer = useCallback(async () => {
-    console.log('🚀 Host: Setting up peer connection...');
+    console.log('🚀 Host: Setting up PeerJS peer...');
+    setConnectionStatus({ connected: false, message: 'Setting up host...' });
+    
     try {
-      const connection = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      // Create a new Peer instance for the host
+      const peer = new Peer({
+        config: {}
       });
-      console.log('✅ Host: RTCPeerConnection created', connection);
 
-      const dataChannel = connection.createDataChannel('sync', {
-        ordered: true
-      });
-      console.log('📡 Host: Data channel created with label:', dataChannel.label, 'id:', dataChannel.id, 'readyState:', dataChannel.readyState);
+      console.log('✅ Host: PeerJS Peer created', peer);
 
       const newPeerConnection: PeerConnection = {
-        connection,
-        dataChannel,
+        peer,
+        dataConnection: null,
         isHost: true
       };
 
       setPeerConnection(newPeerConnection);
       console.log('💾 Host: Peer connection stored in state');
 
-      dataChannel.onmessage = (event) => {
-        console.log('📨 Host: Raw message received:', event.data);
-        const message = JSON.parse(event.data);
-        
-        if (message.type === 'pong') {
-          console.log('🏓 Host: Received pong - connection alive', message);
-        } else {
-          console.log('📩 Host: Received message:', message);
-        }
-      };
+      // Wait for peer to be ready and get its ID
+      return new Promise<string>((resolve, reject) => {
+        let setupTimeout: number | null = null;
+        let isResolved = false;
 
-      dataChannel.onopen = () => {
-        console.log('🔓 Host: Data channel onopen triggered - readyState:', dataChannel.readyState);
-        console.log('🎉 Host: Data channel opened - client connected');
-        setConnectionStatus({ connected: true, message: 'Client connected' });
-        
-        // Start heartbeat
-        console.log('💓 Host: Starting heartbeat ping from onopen');
-        const heartbeat = setInterval(() => {
-          if (dataChannel.readyState === 'open') {
-            console.log('🏓 Host: Sending ping from onopen heartbeat...');
-            dataChannel.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
-          } else {
-            console.log('💔 Host: Heartbeat stopped - dataChannel readyState:', dataChannel.readyState);
-            clearInterval(heartbeat);
+        // Set up timeout for peer initialization
+        setupTimeout = setTimeout(() => {
+          if (!isResolved) {
+            console.error('⏰ Host: Peer setup timeout');
+            setConnectionStatus({ connected: false, message: 'Host setup timeout - try again' });
+            peer.destroy();
+            setPeerConnection(null);
+            reject(new Error('Peer setup timeout'));
           }
-        }, 5000);
-      };
+        }, 10000); // 10 second timeout
 
-      // Listen for ready state changes to handle connection after acceptAnswer
-      dataChannel.addEventListener('readystatechange', () => {
-        console.log('🔄 Host: Data channel ready state changed to:', dataChannel.readyState);
-        console.log('🔍 Host: Full dataChannel state:', {
-          readyState: dataChannel.readyState,
-          id: dataChannel.id,
-          label: dataChannel.label,
-          bufferedAmount: dataChannel.bufferedAmount
-        });
-        
-        if (dataChannel.readyState === 'open') {
-          console.log('🎯 Host: Data channel opened via readystatechange - starting ping if not already started');
-          setConnectionStatus({ connected: true, message: 'Client connected' });
+        peer.on('open', (id) => {
+          if (isResolved) return;
+          isResolved = true;
           
-          // Start heartbeat if not already started (this handles the acceptAnswer case)
-          console.log('💓 Host: Starting heartbeat ping from readystatechange');
-          const heartbeat = setInterval(() => {
-            if (dataChannel.readyState === 'open') {
-              console.log('🏓 Host: Sending ping from readystatechange heartbeat...');
-              dataChannel.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
-            } else {
-              console.log('💔 Host: Heartbeat stopped - dataChannel readyState:', dataChannel.readyState);
-              clearInterval(heartbeat);
-            }
-          }, 5000);
-        } else if (dataChannel.readyState === 'connecting') {
-          console.log('🔗 Host: Data channel is connecting...');
-        } else if (dataChannel.readyState === 'closing') {
-          console.log('🔒 Host: Data channel is closing...');
-        } else if (dataChannel.readyState === 'closed') {
-          console.log('❌ Host: Data channel is closed');
-        }
-      });
-
-      dataChannel.onclose = () => {
-        console.log('🔒 Host: Data channel onclose triggered');
-        console.log('💔 Host: Data channel closed - client disconnected');
-        setConnectionStatus({ connected: false, message: 'Client disconnected' });
-      };
-
-      dataChannel.onerror = (error) => {
-        console.error('❌ Host: Data channel error:', error);
-        console.error('❌ Host: Data channel error event:', error);
-      };
-
-      connection.onicecandidate = (event) => {
-        if (event.candidate) {
-          console.log('🧊 Host: ICE candidate generated:', event.candidate);
-          console.log('🧊 Host: ICE candidate details:', {
-            candidate: event.candidate.candidate,
-            sdpMid: event.candidate.sdpMid,
-            sdpMLineIndex: event.candidate.sdpMLineIndex
-          });
-        } else {
-          console.log('🧊 Host: ICE gathering complete (null candidate)');
-        }
-      };
-
-      connection.onconnectionstatechange = () => {
-        console.log('🔄 Host: Connection state changed to:', connection.connectionState);
-        console.log('🔍 Host: Full connection state:', {
-          connectionState: connection.connectionState,
-          iceConnectionState: connection.iceConnectionState,
-          iceGatheringState: connection.iceGatheringState,
-          signalingState: connection.signalingState
+          if (setupTimeout) {
+            clearTimeout(setupTimeout);
+            setupTimeout = null;
+          }
+          
+          console.log('🎉 Host: Peer opened with ID:', id);
+          newPeerConnection.peerId = id;
+          setConnectionStatus({ connected: false, message: `Waiting for client... (ID: ${id})` });
+          resolve(id);
         });
-        
-        if (connection.connectionState === 'connected') {
-          console.log('✅ Host: WebRTC connection established');
-        } else if (connection.connectionState === 'disconnected' || connection.connectionState === 'failed') {
-          console.log('💔 Host: WebRTC connection lost');
-          setConnectionStatus({ connected: false, message: 'Client disconnected' });
-        }
-      };
 
-      connection.oniceconnectionstatechange = () => {
-        console.log('🧊 Host: ICE connection state changed to:', connection.iceConnectionState);
-      };
+        peer.on('connection', (conn) => {
+          console.log('📡 Host: Incoming connection from:', conn.peer, conn);
+          newPeerConnection.dataConnection = conn;
 
-      connection.onicegatheringstatechange = () => {
-        console.log('🧊 Host: ICE gathering state changed to:', connection.iceGatheringState);
-      };
+          let heartbeatInterval: number | null = null;
+          let connectionTimeout: number | null = null;
 
-      connection.onsignalingstatechange = () => {
-        console.log('📡 Host: Signaling state changed to:', connection.signalingState);
-      };
+          // Set timeout for data connection to open
+          connectionTimeout = setTimeout(() => {
+            if (!conn.open) {
+              console.error('⏰ Host: Data connection timeout');
+              setConnectionStatus({ connected: false, message: 'Client connection timeout' });
+              conn.close();
+            }
+          }, 15000); // 15 second timeout for data connection
 
-      console.log('📝 Host: Creating offer...');
-      const offer = await connection.createOffer();
-      console.log('✅ Host: Offer created:', offer);
-      
-      console.log('📝 Host: Setting local description...');
-      await connection.setLocalDescription(offer);
-      console.log('✅ Host: Local description set');
-      console.log('🔍 Host: Local description details:', connection.localDescription);
+          const startHeartbeat = () => {
+            if (heartbeatInterval) {
+              console.log('💓 Host: Heartbeat already running, skipping');
+              return;
+            }
+            
+            console.log('💓 Host: Starting heartbeat ping');
+            heartbeatInterval = setInterval(() => {
+              if (conn.open) {
+                console.log('🏓 Host: Sending ping...');
+                conn.send({ type: 'ping', timestamp: Date.now() });
+              } else {
+                console.log('💔 Host: Heartbeat stopped - connection closed');
+                if (heartbeatInterval) {
+                  clearInterval(heartbeatInterval);
+                  heartbeatInterval = null;
+                }
+              }
+            }, 5000);
+          };
 
-      const offerString = JSON.stringify(offer);
-      console.log('📦 Host: Offer stringified, length:', offerString.length);
-      console.log('📤 Host: Returning offer string');
-      return offerString;
+          const cleanup = () => {
+            if (heartbeatInterval) {
+              clearInterval(heartbeatInterval);
+              heartbeatInterval = null;
+            }
+            if (connectionTimeout) {
+              clearTimeout(connectionTimeout);
+              connectionTimeout = null;
+            }
+          };
+
+          conn.on('open', () => {
+            console.log('🎉 Host: Data connection opened - client connected');
+            setConnectionStatus({ connected: true, message: 'Client connected' });
+            cleanup();
+            startHeartbeat();
+          });
+
+          conn.on('data', (data) => {
+            console.log('📨 Host: Message received:', data);
+            const message = data as SyncMessage;
+            
+            if (message.type === 'pong') {
+              console.log('🏓 Host: Received pong - connection alive', message);
+            } else {
+              console.log('📩 Host: Received sync message:', message);
+            }
+          });
+
+          conn.on('close', () => {
+            console.log('💔 Host: Data connection closed - client disconnected');
+            setConnectionStatus({ connected: false, message: 'Client disconnected' });
+            cleanup();
+          });
+
+          conn.on('error', (error) => {
+            console.error('❌ Host: Data connection error:', error);
+            setConnectionStatus({ connected: false, message: `Connection error: ${error.message || 'Unknown error'}` });
+            cleanup();
+          });
+        });
+
+        peer.on('error', (error) => {
+          if (isResolved) return;
+          isResolved = true;
+          
+          if (setupTimeout) {
+            clearTimeout(setupTimeout);
+            setupTimeout = null;
+          }
+          
+          console.error('💥 Host: Peer error:', error);
+          let errorMessage = 'Error setting up host';
+          
+          if (error.type === 'network') {
+            errorMessage = 'Network error - check internet connection';
+          } else if (error.type === 'server-error') {
+            errorMessage = 'Server error - try again later';
+          } else if (error.type === 'unavailable-id') {
+            errorMessage = 'ID unavailable - try again';
+          }
+          
+          setConnectionStatus({ connected: false, message: errorMessage });
+          setPeerConnection(null);
+          reject(error);
+        });
+
+        peer.on('disconnected', () => {
+          console.log('🔌 Host: Peer disconnected from signaling server');
+          setConnectionStatus({ connected: false, message: 'Disconnected from server - reconnecting...' });
+          
+          // Try to reconnect
+          setTimeout(() => {
+            if (!peer.destroyed) {
+              peer.reconnect();
+            }
+          }, 1000);
+        });
+      });
     } catch (error) {
       console.error('💥 Error setting up host peer:', error);
-      console.error('💥 Error stack:', error.stack);
       setConnectionStatus({ connected: false, message: 'Error setting up host' });
+      setPeerConnection(null);
       return null;
     }
   }, []);
 
-  const acceptAnswer = useCallback(async (answer: string) => {
-    console.log('🎯 Host: acceptAnswer called');
-    console.log('🔍 Host: peerConnection exists:', !!peerConnection);
-    console.log('🔍 Host: peerConnection.isHost:', peerConnection?.isHost);
-    console.log('🔍 Host: peerConnection details:', peerConnection ? {
-      isHost: peerConnection.isHost,
-      connectionState: peerConnection.connection.connectionState,
-      signalingState: peerConnection.connection.signalingState,
-      dataChannelState: peerConnection.dataChannel?.readyState
-    } : 'null');
+
+
+  const connectToHost = useCallback(async (hostPeerId: string, retryCount = 0) => {
+    // Store the host peer ID for potential retries
+    setLastHostPeerId(hostPeerId);
+    const maxRetries = 3;
+    console.log(`🚀 Client: Starting connection to host with ID: ${hostPeerId} (attempt ${retryCount + 1}/${maxRetries + 1})`);
     
-    if (!peerConnection || !peerConnection.isHost) {
-      console.log('❌ Host: No peer connection or not host, aborting');
-      return;
-    }
-
+    setConnectionStatus({ connected: false, message: `Connecting to host... (${retryCount + 1}/${maxRetries + 1})` });
+    
     try {
-      console.log('📝 Host: Parsing answer JSON...');
-      console.log('📥 Host: Raw answer string:', answer);
-      const answerData = JSON.parse(answer);
-      console.log('✅ Host: Answer parsed successfully:', answerData);
-      console.log('🔍 Host: Answer details:', {
-        type: answerData.type,
-        sdp: answerData.sdp?.substring(0, 100) + '...'
+      // Create a new Peer instance for the client
+      const peer = new Peer({
+        config: {}
       });
-      
-      console.log('📡 Host: Setting remote description...');
-      console.log('🔍 Host: Connection state before setRemoteDescription:', peerConnection.connection.connectionState);
-      console.log('🔍 Host: Signaling state before setRemoteDescription:', peerConnection.connection.signalingState);
-      console.log('🔍 Host: Data channel state before setRemoteDescription:', peerConnection.dataChannel?.readyState);
-      
-      await peerConnection.connection.setRemoteDescription(answerData);
-      
-      console.log('✅ Host: Remote description set successfully');
-      console.log('🔍 Host: Connection state after setRemoteDescription:', peerConnection.connection.connectionState);
-      console.log('🔍 Host: Signaling state after setRemoteDescription:', peerConnection.connection.signalingState);
-      console.log('🔍 Host: Data channel state after setRemoteDescription:', peerConnection.dataChannel?.readyState);
-      console.log('🔍 Host: Remote description details:', peerConnection.connection.remoteDescription);
-      
-      setConnectionStatus({ connected: false, message: 'Answer accepted, waiting for connection...' });
-      console.log('📱 Host: Status updated to waiting for connection');
-    } catch (error) {
-      console.error('💥 Host: Error accepting answer:', error);
-      console.error('💥 Host: Error stack:', error.stack);
-      console.error('💥 Host: Error details:', {
-        name: error.name,
-        message: error.message,
-        code: error.code
-      });
-      setConnectionStatus({ connected: false, message: 'Error accepting answer' });
-    }
-  }, [peerConnection]);
 
-  const connectToHost = useCallback(async (offer: string) => {
-    console.log('🚀 Client: Starting connection to host...');
-    try {
-      const connection = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-      });
-      console.log('✅ Client: RTCPeerConnection created', connection);
+      console.log('✅ Client: PeerJS Peer created', peer);
 
       const newPeerConnection: PeerConnection = {
-        connection,
-        dataChannel: null,
+        peer,
+        dataConnection: null,
         isHost: false
       };
 
       setPeerConnection(newPeerConnection);
       console.log('💾 Client: Peer connection stored in state');
 
-      connection.ondatachannel = (event) => {
-        console.log('📡 Client: Data channel received from host:', event.channel);
-        const dataChannel = event.channel;
-        newPeerConnection.dataChannel = dataChannel;
-        
-        console.log('📡 Client: Data channel details:', {
-          label: dataChannel.label,
-          id: dataChannel.id,
-          readyState: dataChannel.readyState,
-          bufferedAmount: dataChannel.bufferedAmount
-        });
+      return new Promise<string>((resolve, reject) => {
+        let setupTimeout: number | null = null;
+        let connectionTimeout: number | null = null;
+        let isResolved = false;
 
-        dataChannel.onmessage = (event) => {
-          console.log('📨 Client: Raw message received:', event.data);
-          const message: SyncMessage = JSON.parse(event.data);
-          
-          if (message.type === 'ping') {
-            console.log('🏓 Client: Received ping, sending pong...', message);
-            const pongMessage = { type: 'pong', timestamp: Date.now() };
-            console.log('🏓 Client: Sending pong:', pongMessage);
-            dataChannel.send(JSON.stringify(pongMessage));
-          } else if (message.type === 'pong') {
-            console.log('🏓 Client: Received pong', message);
-          } else {
-            console.log('📩 Client: Received sync message:', message);
-            handleSyncMessage(message);
+        // Set up timeout for peer initialization
+        setupTimeout = setTimeout(() => {
+          if (!isResolved) {
+            console.error('⏰ Client: Peer setup timeout');
+            peer.destroy();
+            setPeerConnection(null);
+            
+            if (retryCount < maxRetries) {
+              console.log(`🔄 Client: Retrying connection (${retryCount + 1}/${maxRetries})...`);
+              setTimeout(() => {
+                connectToHost(hostPeerId, retryCount + 1).then(resolve).catch(reject);
+              }, 2000);
+            } else {
+              setConnectionStatus({ connected: false, message: 'Connection timeout - check host ID' });
+              reject(new Error('Peer setup timeout'));
+            }
+          }
+        }, 10000); // 10 second timeout
+
+        const cleanup = () => {
+          if (setupTimeout) {
+            clearTimeout(setupTimeout);
+            setupTimeout = null;
+          }
+          if (connectionTimeout) {
+            clearTimeout(connectionTimeout);
+            connectionTimeout = null;
           }
         };
 
-        dataChannel.onopen = () => {
-          console.log('🔓 Client: Data channel onopen triggered - readyState:', dataChannel.readyState);
-          console.log('🎉 Client: Data channel opened - connected to host');
-          setConnectionStatus({ connected: true, message: 'Connected to host' });
-        };
+        peer.on('open', (id) => {
+          if (isResolved) return;
+          
+          console.log('🎉 Client: Peer opened with ID:', id);
+          newPeerConnection.peerId = id;
+          
+          // Connect to the host
+          console.log('📡 Client: Connecting to host:', hostPeerId);
+          setConnectionStatus({ connected: false, message: 'Connecting to host...' });
+          
+          const conn = peer.connect(hostPeerId);
+          newPeerConnection.dataConnection = conn;
 
-        dataChannel.onclose = () => {
-          console.log('🔒 Client: Data channel onclose triggered');
-          console.log('💔 Client: Data channel closed - disconnected from host');
-          setConnectionStatus({ connected: false, message: 'Disconnected from host' });
-        };
+          // Set timeout for data connection to open
+          connectionTimeout = setTimeout(() => {
+            if (!conn.open && !isResolved) {
+              console.error('⏰ Client: Data connection timeout');
+              conn.close();
+              
+              if (retryCount < maxRetries) {
+                console.log(`🔄 Client: Retrying connection (${retryCount + 2}/${maxRetries + 1})...`);
+                cleanup();
+                peer.destroy();
+                setPeerConnection(null);
+                setTimeout(() => {
+                  connectToHost(hostPeerId, retryCount + 1).then(resolve).catch(reject);
+                }, 2000);
+              } else {
+                setConnectionStatus({ connected: false, message: 'Connection timeout - host may be offline' });
+                cleanup();
+                reject(new Error('Data connection timeout'));
+              }
+            }
+          }, 15000); // 15 second timeout for data connection
 
-        dataChannel.onerror = (error) => {
-          console.error('❌ Client: Data channel error:', error);
-          console.error('❌ Client: Data channel error event:', error);
-        };
+          console.log(conn);
 
-        dataChannel.addEventListener('readystatechange', () => {
-          console.log('🔄 Client: Data channel ready state changed to:', dataChannel.readyState);
-          console.log('🔍 Client: Full dataChannel state:', {
-            readyState: dataChannel.readyState,
-            id: dataChannel.id,
-            label: dataChannel.label,
-            bufferedAmount: dataChannel.bufferedAmount
+          conn.on('open', () => {
+            if (isResolved) return;
+            isResolved = true;
+            
+            console.log('🎉 Client: Data connection opened - connected to host');
+            setConnectionStatus({ connected: true, message: 'Connected to host' });
+            cleanup();
+            resolve('Connected');
+          });
+
+          conn.on('data', (data) => {
+            console.log('📨 Client: Message received:', data);
+            const message = data as SyncMessage;
+            
+            if (message.type === 'ping') {
+              console.log('🏓 Client: Received ping, sending pong...', message);
+              const pongMessage = { type: 'pong', timestamp: Date.now() };
+              console.log('🏓 Client: Sending pong:', pongMessage);
+              conn.send(pongMessage);
+            } else if (message.type === 'pong') {
+              console.log('🏓 Client: Received pong', message);
+            } else {
+              console.log('📩 Client: Received sync message:', message);
+              handleSyncMessage(message);
+            }
+          });
+
+          conn.on('close', () => {
+            console.log('💔 Client: Data connection closed - disconnected from host');
+            setConnectionStatus({ connected: false, message: 'Disconnected from host' });
+            cleanup();
+          });
+
+          conn.on('error', (error) => {
+            console.error('❌ Client: Data connection error:', error);
+            
+            if (!isResolved) {
+              if (retryCount < maxRetries) {
+                console.log(`🔄 Client: Retrying after connection error (${retryCount + 2}/${maxRetries + 1})...`);
+                cleanup();
+                peer.destroy();
+                setPeerConnection(null);
+                setTimeout(() => {
+                  connectToHost(hostPeerId, retryCount + 1).then(resolve).catch(reject);
+                }, 2000);
+              } else {
+                setConnectionStatus({ connected: false, message: `Connection failed: ${error.message || 'Unknown error'}` });
+                cleanup();
+                reject(error);
+              }
+            } else {
+              setConnectionStatus({ connected: false, message: 'Connection lost' });
+              cleanup();
+            }
           });
         });
-      };
 
-      connection.onicecandidate = (event) => {
-        if (event.candidate) {
-          console.log('🧊 Client: ICE candidate generated:', event.candidate);
-          console.log('🧊 Client: ICE candidate details:', {
-            candidate: event.candidate.candidate,
-            sdpMid: event.candidate.sdpMid,
-            sdpMLineIndex: event.candidate.sdpMLineIndex
-          });
-        } else {
-          console.log('🧊 Client: ICE gathering complete (null candidate)');
-        }
-      };
-
-      connection.onconnectionstatechange = () => {
-        console.log('🔄 Client: Connection state changed to:', connection.connectionState);
-        console.log('🔍 Client: Full connection state:', {
-          connectionState: connection.connectionState,
-          iceConnectionState: connection.iceConnectionState,
-          iceGatheringState: connection.iceGatheringState,
-          signalingState: connection.signalingState
+        peer.on('error', (error) => {
+          if (isResolved) return;
+          
+          console.error('💥 Client: Peer error:', error);
+          cleanup();
+          
+          let errorMessage = 'Error connecting to host';
+          let shouldRetry = false;
+          
+          if (error.type === 'network') {
+            errorMessage = 'Network error - check internet connection';
+            shouldRetry = true;
+          } else if (error.type === 'server-error') {
+            errorMessage = 'Server error - try again later';
+            shouldRetry = true;
+          } else if (error.type === 'peer-unavailable') {
+            errorMessage = 'Host not found - check host ID';
+          } else if (error.type === 'unavailable-id') {
+            errorMessage = 'ID unavailable - try again';
+            shouldRetry = true;
+          }
+          
+          if (shouldRetry && retryCount < maxRetries) {
+            console.log(`🔄 Client: Retrying after peer error (${retryCount + 2}/${maxRetries + 1})...`);
+            peer.destroy();
+            setPeerConnection(null);
+            setTimeout(() => {
+              connectToHost(hostPeerId, retryCount + 1).then(resolve).catch(reject);
+            }, 2000);
+          } else {
+            setConnectionStatus({ connected: false, message: errorMessage });
+            setPeerConnection(null);
+            reject(error);
+          }
         });
-        
-        if (connection.connectionState === 'connected') {
-          console.log('✅ Client: WebRTC connection established');
-        } else if (connection.connectionState === 'disconnected' || connection.connectionState === 'failed') {
-          console.log('💔 Client: WebRTC connection lost');
-          setConnectionStatus({ connected: false, message: 'Disconnected from host' });
-        }
-      };
 
-      connection.oniceconnectionstatechange = () => {
-        console.log('🧊 Client: ICE connection state changed to:', connection.iceConnectionState);
-      };
-
-      connection.onicegatheringstatechange = () => {
-        console.log('🧊 Client: ICE gathering state changed to:', connection.iceGatheringState);
-      };
-
-      connection.onsignalingstatechange = () => {
-        console.log('📡 Client: Signaling state changed to:', connection.signalingState);
-      };
-
-      console.log('📥 Client: Raw offer string:', offer);
-      console.log('📝 Client: Parsing offer JSON...');
-      const offerData = JSON.parse(offer);
-      console.log('✅ Client: Offer parsed successfully:', offerData);
-      console.log('🔍 Client: Offer details:', {
-        type: offerData.type,
-        sdp: offerData.sdp?.substring(0, 100) + '...'
+        peer.on('disconnected', () => {
+          console.log('🔌 Client: Peer disconnected from signaling server');
+          if (!isResolved) {
+            setConnectionStatus({ connected: false, message: 'Disconnected from server - reconnecting...' });
+            
+            // Try to reconnect
+            setTimeout(() => {
+              if (!peer.destroyed) {
+                peer.reconnect();
+              }
+            }, 1000);
+          }
+        });
       });
-      
-      console.log('📡 Client: Setting remote description...');
-      await connection.setRemoteDescription(offerData);
-      console.log('✅ Client: Remote description set');
-      console.log('🔍 Client: Remote description details:', connection.remoteDescription);
-
-      console.log('📝 Client: Creating answer...');
-      const answer = await connection.createAnswer();
-      console.log('✅ Client: Answer created:', answer);
-      
-      console.log('📝 Client: Setting local description...');
-      await connection.setLocalDescription(answer);
-      console.log('✅ Client: Local description set');
-      console.log('🔍 Client: Local description details:', connection.localDescription);
-
-      const answerString = JSON.stringify(answer);
-      console.log('📦 Client: Answer stringified, length:', answerString.length);
-      console.log('📤 Client: Returning answer string');
-      return answerString;
     } catch (error) {
       console.error('💥 Error connecting to host:', error);
-      console.error('💥 Error stack:', error.stack);
-      console.error('💥 Error details:', {
-        name: error.name,
-        message: error.message,
-        code: error.code
-      });
-      setConnectionStatus({ connected: false, message: 'Error connecting to host' });
+      
+      if (retryCount < maxRetries) {
+        console.log(`🔄 Client: Retrying after catch error (${retryCount + 2}/${maxRetries + 1})...`);
+        setTimeout(() => {
+          return connectToHost(hostPeerId, retryCount + 1);
+        }, 2000);
+      } else {
+        setConnectionStatus({ connected: false, message: 'Error connecting to host' });
+        setPeerConnection(null);
+      }
       return null;
     }
   }, [handleSyncMessage]);
 
   const handleVideoEvent = (eventType: string, currentTime?: number) => {
-    if (mode === 'host' && peerConnection?.dataChannel) {
+    if (mode === 'host' && peerConnection?.dataConnection) {
       const message: SyncMessage = {
         type: eventType as any,
         timestamp: Date.now(),
@@ -457,7 +507,7 @@ export default function App() {
   };
 
   const handleVideoLoad = (url: string) => {
-    if (mode === 'host' && peerConnection?.dataChannel) {
+    if (mode === 'host' && peerConnection?.dataConnection) {
       sendSyncMessage({
         type: 'video-loaded',
         timestamp: Date.now(),
@@ -487,7 +537,6 @@ export default function App() {
             videoRef={videoRef}
             onSetupPeer={setupHostPeer}
             onVideoEvent={handleVideoEvent}
-            onAcceptAnswer={acceptAnswer}
             connectionStatus={connectionStatus}
           />
         ) : (
